@@ -30,8 +30,63 @@ async function run() {
     const db = client.db('healthDBtraker')
     const healthCollection = db.collection('health')
     const habitCollection = db.collection('habit')
+const streakCollection = db.collection("streaks");
 
-    //all habit releted api here
+// -------------------- Get Habit --------------------
+app.get("/habit/:id", async (req, res) => {
+  const { id } = req.params;
+  const habit = await habitCollection.findOne({ _id: new ObjectId(id) });
+  if (!habit) return res.status(404).send({ error: "Habit not found" });
+
+  // Fetch streak from streaks collection
+  const streakDoc = await streakCollection.findOne({ habitId: id });
+  habit.streak = streakDoc ? streakDoc.streak : 0;
+  habit.completionHistory = streakDoc ? streakDoc.completionHistory : [];
+
+  res.send(habit);
+});
+
+// -------------------- Mark Complete --------------------
+app.put("/habit/:id/complete", async (req, res) => {
+  const { id } = req.params;
+
+  const habit = await habitCollection.findOne({ _id: new ObjectId(id) });
+  if (!habit) return res.status(404).send({ error: "Habit not found" });
+
+  const today = new Date().toDateString();
+
+  let streakDoc = await streakCollection.findOne({ habitId: id });
+  const currentHistory = streakDoc?.completionHistory || [];
+
+  // Prevent duplicate for today
+  if (currentHistory.some(d => new Date(d).toDateString() === today)) {
+    return res.status(400).send({ error: "Already completed today" });
+  }
+
+  // Update history
+  const updatedHistory = [...currentHistory, new Date()];
+
+  // Calculate streak
+  const sortedDates = updatedHistory.map(d => new Date(d)).sort((a, b) => b - a);
+  let count = 1;
+  for (let i = 0; i < sortedDates.length - 1; i++) {
+    const diff = (sortedDates[i] - sortedDates[i + 1]) / (1000 * 60 * 60 * 24);
+    if (diff === 1) count++;
+    else break;
+  }
+
+  // Upsert streak document
+  await streakCollection.updateOne(
+    { habitId: id },
+    { $set: { habitId: id, streak: count, completionHistory: updatedHistory, updatedAt: new Date() } },
+    { upsert: true }
+  );
+
+  res.send({ success: true, completionHistory: updatedHistory, streak: count });
+});
+
+
+    // final api dont touvh here
     app.get('/habit', async (req, res) => {
       const result = await habitCollection.find().toArray()
       res.send(result)
