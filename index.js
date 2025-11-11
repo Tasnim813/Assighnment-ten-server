@@ -1,7 +1,7 @@
 const express = require('express')
 const app = express()
 const cors = require('cors');
-const { MongoClient, ServerApiVersion, ObjectId} = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const port = process.env.PORT || 3000;
 require('dotenv').config()
 app.use(cors())
@@ -30,22 +30,7 @@ async function run() {
     const db = client.db('healthDBtraker')
     const healthCollection = db.collection('health')
     const habitCollection = db.collection('habit')
-const streakCollection = db.collection("streaks");
-
-// -------------------- Get Habit --------------------
-app.get("/habit/:id", async (req, res) => {
-  const { id } = req.params;
-  const habit = await habitCollection.findOne({ _id: new ObjectId(id) });
-  if (!habit) return res.status(404).send({ error: "Habit not found" });
-
-  // Fetch streak from streaks collection
-  const streakDoc = await streakCollection.findOne({ habitId: id });
-  habit.streak = streakDoc ? streakDoc.streak : 0;
-  habit.completionHistory = streakDoc ? streakDoc.completionHistory : [];
-
-  res.send(habit);
-});
-
+    const streakCollection = db.collection("streaks");
 // -------------------- Mark Complete --------------------
 app.put("/habit/:id/complete", async (req, res) => {
   const { id } = req.params;
@@ -53,36 +38,82 @@ app.put("/habit/:id/complete", async (req, res) => {
   const habit = await habitCollection.findOne({ _id: new ObjectId(id) });
   if (!habit) return res.status(404).send({ error: "Habit not found" });
 
-  const today = new Date().toDateString();
+  // ✅ Bangladesh timezone fix (UTC+6)
+  const now = new Date();
+  const bdTime = new Date(now.getTime() + 6 * 60 * 60 * 1000);
+  const today = bdTime.toISOString().split("T")[0]; // "2025-11-10"
 
   let streakDoc = await streakCollection.findOne({ habitId: id });
   const currentHistory = streakDoc?.completionHistory || [];
 
-  // Prevent duplicate for today
-  if (currentHistory.some(d => new Date(d).toDateString() === today)) {
+  // ✅ একদিনে একবারই complete করা যাবে
+  if (currentHistory.some(d => d === today)) {
     return res.status(400).send({ error: "Already completed today" });
   }
 
-  // Update history
-  const updatedHistory = [...currentHistory, new Date()];
+  // ✅ আজকের দিন add করো
+  const updatedHistory = [...currentHistory, today].sort((a, b) => new Date(b) - new Date(a));
 
-  // Calculate streak
-  const sortedDates = updatedHistory.map(d => new Date(d)).sort((a, b) => b - a);
-  let count = 1;
-  for (let i = 0; i < sortedDates.length - 1; i++) {
-    const diff = (sortedDates[i] - sortedDates[i + 1]) / (1000 * 60 * 60 * 24);
-    if (diff === 1) count++;
-    else break;
+  // ✅ streak গণনা
+  let streak = 1;
+  for (let i = 0; i < updatedHistory.length - 1; i++) {
+    const currentDate = new Date(updatedHistory[i]);
+    const nextDate = new Date(updatedHistory[i + 1]);
+    const diffDays = (currentDate - nextDate) / (1000 * 60 * 60 * 24);
+
+    if (diffDays === 1) streak++;
+    else break; // break হলেই থামবে
   }
 
-  // Upsert streak document
+  // ✅ DB তে save করো
   await streakCollection.updateOne(
     { habitId: id },
-    { $set: { habitId: id, streak: count, completionHistory: updatedHistory, updatedAt: new Date() } },
+    {
+      $set: {
+        habitId: id,
+        streak,
+        completionHistory: updatedHistory,
+        updatedAt: new Date(),
+      },
+    },
     { upsert: true }
   );
 
-  res.send({ success: true, completionHistory: updatedHistory, streak: count });
+  res.send({ success: true, streak, completionHistory: updatedHistory });
+});
+
+
+// -------------------- Get Habit --------------------
+app.get("/habit/:id", async (req, res) => {
+  const { id } = req.params;
+  const habit = await habitCollection.findOne({ _id: new ObjectId(id) });
+  if (!habit) return res.status(404).send({ error: "Habit not found" });
+
+  const streakDoc = await streakCollection.findOne({ habitId: id });
+
+  // ✅ Time check — যদি আজকে complete না করা হয়, streak reset হয়ে যাবে
+  let streak = streakDoc ? streakDoc.streak : 0;
+  let completionHistory = streakDoc ? streakDoc.completionHistory : [];
+
+  if (completionHistory.length > 0) {
+    const now = new Date();
+    const bdTime = new Date(now.getTime() + 6 * 60 * 60 * 1000);
+    const today = bdTime.toISOString().split("T")[0];
+    const lastDate = completionHistory[0];
+
+    const diffDays =
+      (new Date(today) - new Date(lastDate)) / (1000 * 60 * 60 * 24);
+
+    // ✅ যদি গতকাল complete করা না হয় → streak reset
+    if (diffDays > 1) {
+      streak = 0;
+    }
+  }
+
+  habit.streak = streak;
+  habit.completionHistory = completionHistory;
+
+  res.send(habit);
 });
 
 
@@ -94,27 +125,27 @@ app.put("/habit/:id/complete", async (req, res) => {
 
     app.get('/habit/:id', async (req, res) => {
       const { id } = req.params
-      const query = { _id: new ObjectId (id) }
+      const query = { _id: new ObjectId(id) }
       const result = await habitCollection.findOne(query)
       res.send(result)
     })
-    app.put('/habit/:id',async(req,res)=>{
-      const {id}=req.params
-      const data=req.body
-     
-      const query={ _id: new  ObjectId(id)}
-      const filter=query
-      const update={
-        $set:data
+    app.put('/habit/:id', async (req, res) => {
+      const { id } = req.params
+      const data = req.body
+
+      const query = { _id: new ObjectId(id) }
+      const filter = query
+      const update = {
+        $set: data
       }
-      const result= await habitCollection.updateOne(filter,update)
+      const result = await habitCollection.updateOne(filter, update)
 
       res.send(result)
     })
-    app.delete('/habit/:id',async(req,res)=>{
-      const {id}=req.params
-      const query={_id: new ObjectId(id)}
-      const result=await habitCollection.deleteOne(query)
+    app.delete('/habit/:id', async (req, res) => {
+      const { id } = req.params
+      const query = { _id: new ObjectId(id) }
+      const result = await habitCollection.deleteOne(query)
       res.send(result)
     })
     app.post('/habit', async (req, res) => {
@@ -123,14 +154,20 @@ app.put("/habit/:id/complete", async (req, res) => {
       const result = await habitCollection.insertOne(data)
       res.send(result)
     })
+  
+    app.get('/search', async (req, res) => {
+      const search = req.query.search
+      const result = await habitCollection.find({ title:{$regex:search, $options: 'i'}}).toArray()
+      res.send(result)
+    })
 
     // my habit api
     app.get('/my-habit', async (req, res) => {
       const email = req.query.email
-      
+
       const result = await habitCollection.find({
-       
-creatorEmail: email
+
+        creatorEmail: email
       }).toArray()
       res.send(result)
     })
