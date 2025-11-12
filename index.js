@@ -172,8 +172,14 @@ app.get("/habit/:id", async (req, res) => {
       res.send(result)
     })
 
+    // latest habit
+    app.get('/latest-habit',async(req,res)=>{
+      const result=await habitCollection.find().sort({createdAt: -1}).limit(6).toArray()
+      res.send(result)
+    })
+
     // health related api
-    app.get('/health', async (req, res) => {
+    app.get('/', async (req, res) => {
       const result = await healthCollection.find().toArray()
       res.send(result)
     })
