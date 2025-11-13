@@ -182,13 +182,6 @@ app.get("/habit/:id", async (req, res) => {
    
 
   
-    app.get('/health/:id', async (req, res) => {
-      const { id } = req.params
-      const query = { _id: id }
-      const result = await healthCollection.findOne(query)
-      res.send(result)
-
-    })
 
 
 
