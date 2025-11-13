@@ -28,7 +28,7 @@ async function run() {
     await client.connect();
 
     const db = client.db('healthDBtraker')
-    const healthCollection = db.collection('health')
+  
     const habitCollection = db.collection('habit')
     const streakCollection = db.collection("streaks");
 // -------------------- Mark Complete --------------------
@@ -46,15 +46,14 @@ app.put("/habit/:id/complete", async (req, res) => {
   let streakDoc = await streakCollection.findOne({ habitId: id });
   const currentHistory = streakDoc?.completionHistory || [];
 
-  // ✅ একদিনে একবারই complete করা যাবে
   if (currentHistory.some(d => d === today)) {
     return res.status(400).send({ error: "Already completed today" });
   }
 
-  // ✅ আজকের দিন add করো
+
   const updatedHistory = [...currentHistory, today].sort((a, b) => new Date(b) - new Date(a));
 
-  // ✅ streak গণনা
+ 
   let streak = 1;
   for (let i = 0; i < updatedHistory.length - 1; i++) {
     const currentDate = new Date(updatedHistory[i]);
@@ -65,7 +64,6 @@ app.put("/habit/:id/complete", async (req, res) => {
     else break; // break হলেই থামবে
   }
 
-  // ✅ DB তে save করো
   await streakCollection.updateOne(
     { habitId: id },
     {
@@ -91,7 +89,7 @@ app.get("/habit/:id", async (req, res) => {
 
   const streakDoc = await streakCollection.findOne({ habitId: id });
 
-  // ✅ Time check — যদি আজকে complete না করা হয়, streak reset হয়ে যাবে
+ 
   let streak = streakDoc ? streakDoc.streak : 0;
   let completionHistory = streakDoc ? streakDoc.completionHistory : [];
 
@@ -104,7 +102,6 @@ app.get("/habit/:id", async (req, res) => {
     const diffDays =
       (new Date(today) - new Date(lastDate)) / (1000 * 60 * 60 * 24);
 
-    // ✅ যদি গতকাল complete করা না হয় → streak reset
     if (diffDays > 1) {
       streak = 0;
     }
@@ -178,8 +175,7 @@ app.get("/habit/:id", async (req, res) => {
       res.send(result)
     })
 
-    // health related api
-   
+  
 
   
 
